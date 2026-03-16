@@ -27,6 +27,10 @@ export const config = {
     coinCount: 12, // 金币数量
     coinHeightRange: 60, // 金币生成范围（平台上方0-60像素）
     
+    // 钻石相关参数
+    diamondCount: 5, // 钻石数量
+    diamondSpawnProbability: 0.05, // 钻石生成概率（5%）
+    
     // 游戏世界尺寸
     gameWorldWidth: 2000, // 游戏世界宽度
     gameWorldHeight: 3000 // 游戏世界高度
@@ -48,7 +52,7 @@ export const camera = {
  * 包含游戏的初始状态变量
  */
 export const initialGameState = {
-    score: 100, // 初始分数
+    score: 0, // 初始分数
     gameOver: false, // 游戏是否结束
     gameOverTimer: 0, // 游戏结束计时器
     playerHealth: 10, // 玩家初始生命值
@@ -57,7 +61,8 @@ export const initialGameState = {
     invincibleTimer: 0, // 无敌时间计时器
     isHurt: false, // 玩家是否受到伤害
     hurtTimer: 0, // 伤害效果持续时间计时器
-    isPaused: false // 游戏是否暂停
+    isPaused: false, // 游戏是否暂停
+    diamondsCollected: 0 // 已收集钻石数量
 };
 
 /**
@@ -79,5 +84,6 @@ export const initialKeys = {
  */
 export const initialGameObjects = {
     platforms: [], // 平台数组
-    coins: [] // 金币数组
+    coins: [], // 金币数组
+    diamonds: [] // 钻石数组
 };

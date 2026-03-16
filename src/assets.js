@@ -14,6 +14,7 @@ const assets = {
     greatsword: null, // 大刀图片
     spear: null, // 长枪图片
     healingPotion: null, // 恢复药水图片
+    diamond: null, // 钻石图片
     loaded: false
 };
 
@@ -23,7 +24,7 @@ function loadAssets() {
         console.log('开始加载素材...');
         
         let loadedCount = 0;
-        const totalAssets = 14;
+        const totalAssets = 15;
         
         // 尝试加载素材
         const playerImg = new Image();
@@ -229,6 +230,21 @@ function loadAssets() {
         };
         healingPotionImg.onerror = function() {
             console.log('无法加载Healing Potion.png');
+            loadedCount++;
+            checkAllLoaded();
+        };
+        
+        // 加载钻石图片
+        const diamondImg = new Image();
+        diamondImg.src = 'assets/Diamond.png';
+        diamondImg.onload = function() {
+            console.log('Diamond.png 加载成功');
+            assets.diamond = diamondImg;
+            loadedCount++;
+            checkAllLoaded();
+        };
+        diamondImg.onerror = function() {
+            console.log('无法加载Diamond.png');
             loadedCount++;
             checkAllLoaded();
         };

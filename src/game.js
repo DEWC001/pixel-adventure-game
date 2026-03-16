@@ -8,7 +8,7 @@ import { bombs, generateFallingBomb, updateBombs, drawBombs, checkBombCollision,
 import { bosses, boss2s, generateBoss, generateBoss2, updateBoss, updateBoss2, drawBoss, checkBossCollision, clearBoss } from './boss.js';
 
 // 导入UI模块
-import { showMenu, showShop, showWelcome, drawWelcome, drawMenuButton, drawShopButton, drawMenu, drawShop, drawHUD, drawGameOver, handleClick, addNotification, updateNotifications, drawNotifications } from './ui.js';
+import { showMenu, showShop, showWelcome, showRankings, drawWelcome, drawMenuButton, drawShopButton, drawRankingsButton, drawMenu, drawShop, drawRankings, drawHUD, drawGameOver, handleClick, addNotification, updateNotifications, drawNotifications, handleKeyboardInput, playerName } from './ui.js';
 
 // 导入绘制函数
 import { drawCoin, drawBomb } from './drawables.js';
@@ -27,6 +27,9 @@ import { config, camera, initialGameState, initialKeys, initialGameObjects } fro
 
 // 导入药水系统
 import { potions, generateHealingPotion, updatePotions, drawPotions, checkPotionCollision, clearPotions } from './potions.js';
+
+// 导入排行榜系统
+import { addRanking, getRankings } from './rankings.js';
 
 // 游戏变量
 const canvas = document.getElementById('gameCanvas');
@@ -60,9 +63,10 @@ const player = {
     attackCooldown: 30 // 攻击冷却时间（帧数）
 };
 
-// 平台、金币
+// 平台、金币、钻石
 let platforms = initialGameObjects.platforms;
 let coins = initialGameObjects.coins;
+let diamonds = initialGameObjects.diamonds;
 
 // 游戏状态
 let score = initialGameState.score;
@@ -75,6 +79,12 @@ let invincibleTimer = initialGameState.invincibleTimer; // 无敌时间计时器
 let isHurt = initialGameState.isHurt; // 玩家是否受到伤害
 let hurtTimer = initialGameState.hurtTimer; // 伤害效果持续时间计时器
 let isPaused = initialGameState.isPaused; // 游戏是否暂停
+let diamondsCollected = initialGameState.diamondsCollected; // 已收集钻石数量
+let isGameWon = false; // 游戏是否胜利
+
+// 游戏时间
+let gameStartTime = 0; // 游戏开始时间
+let gameTime = 0; // 游戏用时（秒）
 
 // 按键状态
 const keys = {
@@ -278,12 +288,13 @@ function generateMorePlatforms() {
     }
 }
 
-// 生成金币
+// 生成金币和钻石
 function generateCoins() {
     coins = [];
+    diamonds = [];
     const canvasWidth = canvas.width;
     
-    // 在每个平台上生成金币
+    // 在每个平台上生成金币和钻石
     for (const platform of platforms) {
         // 平台上的金币
         const coinCount = Phaser.Math.Between(1, 3);
@@ -297,6 +308,20 @@ function generateCoins() {
                 y: coinY,
                 width: 32, // 缩小金币大小
                 height: 32, // 缩小金币大小
+                collected: false
+            });
+        }
+        
+        // 有一定概率在平台上生成钻石
+        if (Math.random() < config.diamondSpawnProbability) {
+            const diamondX = platform.x + Phaser.Math.Between(10, platform.width - 42);
+            const diamondY = platform.y - Phaser.Math.Between(10, config.coinHeightRange);
+            
+            diamonds.push({
+                x: diamondX,
+                y: diamondY,
+                width: 32,
+                height: 32,
                 collected: false
             });
         }
@@ -317,6 +342,24 @@ function generateCoins() {
             y: coinY,
             width: 32, // 缩小金币大小
             height: 32, // 缩小金币大小
+            collected: false
+        });
+    }
+    
+    // 确保钻石数量足够
+    while (diamonds.length < config.diamondCount) {
+        // 在平台上方生成钻石
+        const platformIndex = Phaser.Math.Between(0, platforms.length - 1);
+        const platform = platforms[platformIndex];
+        
+        const diamondX = platform.x + Phaser.Math.Between(10, platform.width - 42);
+        const diamondY = platform.y - Phaser.Math.Between(10, config.coinHeightRange);
+        
+        diamonds.push({
+            x: diamondX,
+            y: diamondY,
+            width: 32,
+            height: 32,
             collected: false
         });
     }
@@ -343,11 +386,15 @@ function endGame() {
 // 重新开始游戏
 function restartGame() {
     gameOver = false;
+    isGameWon = false; // 重置游戏胜利状态
     score = 0;
     playerHealth = 10; // 重置生命值
     maxHealth = 10; // 重置最大生命值
     player.attackPower = 0; // 重置攻击力
     player.currentWeapon = createWeapon('fist'); // 重置为默认空手武器
+    diamondsCollected = 0; // 重置已收集钻石数量
+    gameStartTime = 0; // 重置游戏开始时间
+    gameTime = 0; // 重置游戏用时
     generatePlatforms();
     generateCoins();
     clearBombs(); // 清空炸弹
@@ -387,6 +434,9 @@ window.addEventListener('keyup', (e) => {
 // 窗口大小变化时调整画布
 window.addEventListener('resize', resizeCanvas);
 
+// 键盘事件处理
+window.addEventListener('keydown', handleKeyboardInput);
+
 // 点击事件处理
 canvas.addEventListener('click', function(e) {
     const rect = canvas.getBoundingClientRect();
@@ -395,8 +445,8 @@ canvas.addEventListener('click', function(e) {
     
     const result = handleClick(mouseX, mouseY, canvas, gameOver, score, config, playerHealth);
     
-    // 根据菜单和商城的显示状态设置游戏暂停
-    isPaused = showMenu || showShop;
+    // 根据菜单、商城和排行榜的显示状态设置游戏暂停
+    isPaused = showMenu || showShop || showRankings;
     
     if (result) {
         switch (result.action) {
@@ -469,10 +519,18 @@ function checkCollision(rect1, rect2) {
 
 // 更新游戏
 function update() {
-    if (gameOver || showWelcome || isPaused) {
+    if (gameOver || showWelcome || isPaused || showRankings) {
         gameOverTimer++;
         return;
     }
+    
+    // 记录游戏开始时间
+    if (gameStartTime === 0) {
+        gameStartTime = Date.now();
+    }
+    
+    // 更新游戏时间
+    gameTime = Math.floor((Date.now() - gameStartTime) / 1000);
     
     // 更新提示
     updateNotifications();
@@ -627,9 +685,36 @@ function update() {
         }
     }
     
+    // 收集钻石
+    for (const diamond of diamonds) {
+        if (!diamond.collected && checkCollision(player, diamond)) {
+            diamond.collected = true;
+            diamondsCollected++;
+            addNotification('收集到钻石！已收集: ' + diamondsCollected + '/5');
+            
+            // 检查是否收集了所有钻石
+            if (diamondsCollected >= config.diamondCount) {
+                // 游戏胜利
+                addNotification('恭喜！收集了所有钻石，完成冒险！');
+                setTimeout(() => {
+                    // 添加排行榜记录
+                    addRanking(playerName, gameTime, score);
+                    gameOver = true;
+                    isGameWon = true;
+                }, 2000);
+            }
+        }
+    }
+    
     // 检查是否所有金币都被收集
     if (coins.every(coin => coin.collected)) {
         // 重新生成金币
+        generateCoins();
+    }
+    
+    // 检查是否所有钻石都被收集
+    if (diamonds.every(diamond => diamond.collected) && diamondsCollected < config.diamondCount) {
+        // 重新生成钻石
         generateCoins();
     }
     
@@ -773,6 +858,19 @@ function draw() {
         }
     }
     
+    // 绘制钻石
+    for (const diamond of diamonds) {
+        if (!diamond.collected) {
+            if (assets.loaded && assets.diamond) {
+                ctx.drawImage(assets.diamond, diamond.x - camera.x, diamond.y - camera.y, diamond.width, diamond.height);
+            } else {
+                // 默认钻石绘制
+                ctx.fillStyle = '#00FFFF';
+                ctx.fillRect(diamond.x - camera.x, diamond.y - camera.y, diamond.width, diamond.height);
+            }
+        }
+    }
+    
     // 绘制炸弹
     drawBombs(ctx, camera, assets);
     
@@ -818,7 +916,7 @@ function draw() {
     
     // 绘制分数和生命值
     const totalAttackPower = player.currentWeapon ? player.currentWeapon.damage : 0; // 根据当前持有武器计算攻击力
-    drawHUD(ctx, canvas, score, playerHealth, maxHealth, totalAttackPower, player.currentWeapon, assets);
+    drawHUD(ctx, canvas, score, playerHealth, maxHealth, totalAttackPower, player.currentWeapon, assets, diamondsCollected);
     
     // 绘制菜单按钮
     drawMenuButton(ctx, canvas);
@@ -826,15 +924,21 @@ function draw() {
     // 绘制商城按钮
     drawShopButton(ctx, canvas);
     
+    // 绘制排行榜按钮
+    drawRankingsButton(ctx, canvas);
+    
     // 绘制菜单
     drawMenu(ctx, canvas);
     
     // 绘制商城
     drawShop(ctx, canvas, score);
     
+    // 绘制排行榜
+    drawRankings(ctx, canvas, getRankings());
+    
     // 绘制游戏结束界面
     if (gameOver) {
-        drawGameOver(ctx, canvas, score);
+        drawGameOver(ctx, canvas, score, isGameWon, gameTime, getRankings());
     }
     
     // 绘制提示
